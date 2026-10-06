@@ -1,8 +1,17 @@
-# Tiger AI Room Styler — Phase 1B
+# Tiger AI Room Styler — Phase 1B + Phase 2A
 
-這是一個本機 FastAPI 網頁工具：驗證並校正一張室內照片，在取得明確同意後把實際處理過的圖片位元傳給 NVIDIA 雲端 NIM 的 Z.ai GLM-5.3-Flash，再以繁體中文顯示具照片證據的整理與美學建議。Phase 1B 會在原始照片上標示有證據的行動來源，且僅在目的地也有照片觀察與邊界框時繪製箭頭；同時提供依優先度排序的本機行動清單與完成狀態。AI 分析在雲端進行；本機只做圖片前處理、回應驗證與 UI 狀態管理。不會產生改造後圖片，也不會預設保存上傳照片或完成狀態。
+這是一個本機 FastAPI 網頁工具：驗證並校正一張室內照片，在取得明確同意後把實際處理過的圖片位元傳給 NVIDIA 雲端 NIM 的 Z.ai GLM-5.3-Flash，再以繁體中文顯示具照片證據的整理與美學建議。Phase 1B 會在原始照片上標示有證據的行動來源，且僅在目的地也有照片觀察與邊界框時繪製箭頭；同時提供依優先度排序的本機行動清單與完成狀態。
 
 Phase 1B 狀態：**PASS**。Live NVIDIA API 與屋主真實照片人工驗證均已通過；完整自動測試為 **94 passed**。測試期間發現的程序環境金鑰覆蓋 HTTP 403，以及 NVIDIA 回應讀取上限不足所致 HTTP 504，皆已解決。
+
+Phase 2A 狀態：**IMPLEMENTED_NOT_LIVE_TESTED**。成功的 Phase 1B 分析完成後，可選擇將同一張處理後照片、該次核准建議及限制送至 OpenAI Image API 的 `gpt-image-2.5-sunburst` 圖片編輯端點，產生單一「AI 整理預覽」。目前只完成程式與模擬測試（現有完整測試套件 **108 passed**），未呼叫 OpenAI、未花費額度，也不宣稱真實生成效果可用。預覽是生成式模擬，不代表實際整理結果。
+
+## Phase 2A AI 整理預覽
+
+- 僅在 Phase 1B 分析成功且設定 `OPENAI_API_KEY` 後開放按鈕；缺少金鑰不影響應用程式啟動或 Phase 1A/1B 分析。
+- 每次請求以雜湊綁定目前處理後照片、完整分析與限制；照片或限制改變後必須重新分析，舊預覽回應不會套到新照片。
+- 編輯提示要求保持同一房間、視角、固定結構、目前風格與不確定物品；禁止移動大型家具時保持其位置，禁止購買時不得加入新家具、收納用品、裝飾或其他新物品。
+- 每次操作只送一個圖片編輯請求，不重試、不產生多個版本、不切換供應商。網頁會直接顯示「⚠ 此功能尚未實際測試」及生成式結果免責說明。
 
 ## Visual Action Plan
 
@@ -17,7 +26,7 @@ Phase 1B 狀態：**PASS**。Live NVIDIA API 與屋主真實照片人工驗證�
 - Python：`D:\0TIGER\6months\PythonAPIDevelopment\venv_multi_query\Scripts\python.exe`
 - 預設網址：<http://127.0.0.1:18083>
 
-沒有 `.env` 時才複製 `.env.example` 為 `.env`，並填入 `NVIDIA_API_KEY`。已有 `.env` 時只更新所需欄位；將 `ROOMSTYLER_VISION_MODEL` 改為 `z-ai/glm-5.3-flash`。作業系統環境變數（包含空字串）優先於 `.env`。金鑰只存伺服器，請勿放入前端程式。未設定金鑰仍能啟動並預覽照片，但不能執行雲端分析。
+沒有 `.env` 時才複製 `.env.example` 為 `.env`。Phase 1A/1B 分析需要 `NVIDIA_API_KEY` 與 `ROOMSTYLER_VISION_MODEL=z-ai/glm-5.3-flash`；Phase 2A 預覽另需 `OPENAI_API_KEY` 與 `ROOMSTYLER_IMAGE_MODEL=gpt-image-2.5-sunburst`。作業系統環境變數優先於 `.env`。金鑰只存伺服器，請勿放入前端程式。未設定 OpenAI 金鑰仍能啟動並使用已設定的 Phase 1A/1B 功能。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
@@ -33,7 +42,7 @@ D:\0TIGER\6months\PythonAPIDevelopment\venv_multi_query\Scripts\python.exe -m uv
 
 ## 設定
 
-`NVIDIA_API_KEY`（分析時必要）、`ROOMSTYLER_VISION_MODEL`（預設 `z-ai/glm-5.3-flash`）、`ROOMSTYLER_HOST`、`ROOMSTYLER_PORT`、`ROOMSTYLER_PROVIDER_TIMEOUT_SECONDS`（預設 180 秒的 NVIDIA 回應讀取上限；連線、寫入與連線池另有較短上限）、`ROOMSTYLER_PROVIDER_MAX_OUTPUT_TOKENS`（16384），以及三個圖片限制變數都列在 `.env.example`。啟動腳本的 host/port 讀取程序環境變數；直接 uvicorn 命令以命令列的 host/port 為準。
+`NVIDIA_API_KEY`（分析時必要）、`ROOMSTYLER_VISION_MODEL`（預設 `z-ai/glm-5.3-flash`）、`OPENAI_API_KEY`（只在產生預覽時必要）、`ROOMSTYLER_IMAGE_MODEL`（預設 `gpt-image-2.5-sunburst`）、`ROOMSTYLER_HOST`、`ROOMSTYLER_PORT`、`ROOMSTYLER_PROVIDER_TIMEOUT_SECONDS`、`ROOMSTYLER_PROVIDER_MAX_OUTPUT_TOKENS`，以及三個圖片限制變數都列在 `.env.example`。
 
 照片及使用者限制會傳送至 NVIDIA 雲端服務，可能產生 API 費用，並適用 NVIDIA 服務條款與資料處理政策；不保證零留存。`/health` 只檢查設定有無，不發送付費請求，也不證明金鑰或模型權限有效。
 

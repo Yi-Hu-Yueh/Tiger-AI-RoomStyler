@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+import base64
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 from app.providers.nvidia_nim import NvidiaNimVisionProvider, ProviderError
-from app.schemas import AnalyzeConstraints, AnalyzeResponse, ImageMetadata
+from app.providers.openai_image import ImageEditProviderError, OpenAIImageEditProvider
+from app.schemas import (
+    AnalyzeConstraints,
+    AnalyzeResponse,
+    ImageMetadata,
+    OrganizedPreviewResponse,
+    RoomAnalysis,
+)
 from app.services.image_service import ImageValidationError, validate_and_process_upload
-from app.services.room_analysis_service import AnalysisValidationError, analyze_room
+from app.services.preview_binding import binding_matches, create_analysis_binding
+from app.services.room_analysis_service import AnalysisValidationError, analyze_room, validate_semantics
 
 
 router = APIRouter(prefix="/api/v1", tags=["analysis"])
@@ -116,4 +126,48 @@ async def analyze(
         preview_data_url=processed.preview_data_url,
         submitted_constraints=constraints,
         provider_model=settings.vision_model,
+        analysis_binding=create_analysis_binding(processed.data, result, constraints),
+    )
+
+
+@router.post("/organized-preview", response_model=OrganizedPreviewResponse)
+async def organized_preview(
+    image: UploadFile = File(...),
+    analysis_json: str = Form(...),
+    constraints_json: str = Form(...),
+    analysis_binding: str = Form(...),
+    settings: Settings = Depends(get_settings),
+) -> OrganizedPreviewResponse:
+    try:
+        analysis = RoomAnalysis.model_validate_json(analysis_json)
+        constraints = AnalyzeConstraints.model_validate_json(constraints_json)
+        validate_semantics(analysis, constraints)
+    except (ValidationError, AnalysisValidationError) as exc:
+        raise _http_error(422, "invalid_preview_context", "預覽所需的分析或限制資料無效。") from exc
+    if not analysis.input_suitability.suitable or not analysis.recommendations:
+        raise _http_error(422, "preview_not_available", "目前分析沒有可供產生預覽的核准行動。")
+
+    processed = await _image(image, settings)
+    if not binding_matches(analysis_binding, processed.data, analysis, constraints):
+        raise _http_error(409, "stale_analysis", "照片、建議或限制已變更，請重新分析後再產生預覽。")
+
+    provider = OpenAIImageEditProvider(
+        settings.openai_api_key,
+        settings.image_model,
+        settings.provider_timeout_seconds,
+    )
+    try:
+        output, output_mime = await provider.edit(
+            processed.data,
+            processed.mime_type,
+            analysis.recommendations,
+            constraints,
+        )
+    except ImageEditProviderError as exc:
+        raise _http_error(exc.status_code, exc.code, exc.message) from exc
+    return OrganizedPreviewResponse(
+        label="AI 整理預覽",
+        preview_data_url=f"data:{output_mime};base64,{base64.b64encode(output).decode('ascii')}",
+        provider_model=settings.image_model,
+        analysis_binding=analysis_binding,
     )

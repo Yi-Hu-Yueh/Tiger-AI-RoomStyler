@@ -17,6 +17,9 @@ let selectionVersion = 0;
 let activeRequest = false;
 let resultSnapshot = null;
 let actionCompletionState = null;
+let imageProviderConfigured = false;
+let activePreviewController = null;
+let previewRequestVersion = 0;
 
 function textElement(tag, text, className = "") {
   const element = document.createElement(tag);
@@ -31,6 +34,7 @@ function bboxToPercent(box) {
 
 function clearResults() {
   resultSnapshot = null;
+  clearGeneratedPreview();
   byId("results").hidden = true;
   byId("overlay-layer").replaceChildren();
   byId("action-marker-layer").replaceChildren();
@@ -40,6 +44,59 @@ function clearResults() {
   byId("recommendations").replaceChildren();
   byId("observations").replaceChildren();
   actionCompletionState = null;
+}
+
+function currentPreviewConstraints() {
+  const snapshot = formSnapshot();
+  return {...snapshot, consent: form.elements.consent.checked};
+}
+
+function previewContextIsCurrent() {
+  return Boolean(
+    resultSnapshot && validatedFile &&
+    resultSnapshot.selectionVersion === selectionVersion &&
+    JSON.stringify(resultSnapshot.submittedConstraints) === JSON.stringify(currentPreviewConstraints())
+  );
+}
+
+function refreshPreviewAvailability() {
+  const button = byId("generate-preview-button");
+  if (!imageProviderConfigured) {
+    button.disabled = true;
+    byId("organized-preview-status").textContent = "尚未設定 OPENAI_API_KEY；房間分析仍可正常使用。";
+    return;
+  }
+  if (!resultSnapshot) {
+    button.disabled = true;
+    byId("organized-preview-status").textContent = "請先完成房間分析。";
+    return;
+  }
+  if (!resultSnapshot.analysis?.input_suitability?.suitable || !resultSnapshot.analysis?.recommendations?.length) {
+    button.disabled = true;
+    byId("organized-preview-status").textContent = "本次分析沒有可供產生預覽的核准行動。";
+    return;
+  }
+  if (!previewContextIsCurrent()) {
+    button.disabled = true;
+    byId("organized-preview-status").textContent = "照片或限制已變更，請重新分析後再產生預覽。";
+    return;
+  }
+  button.disabled = Boolean(activePreviewController);
+  byId("organized-preview-status").textContent = activePreviewController
+    ? "正在產生 AI 整理預覽…"
+    : (byId("organized-preview-result").hidden
+      ? "已綁定目前照片、建議與限制，可產生一張預覽。"
+      : "AI 整理預覽已產生；請對照原照片人工確認。");
+}
+
+function clearGeneratedPreview() {
+  previewRequestVersion += 1;
+  if (activePreviewController) activePreviewController.abort();
+  activePreviewController = null;
+  byId("organized-preview-result").hidden = true;
+  byId("organized-preview-image").removeAttribute("src");
+  byId("organized-preview-error").hidden = true;
+  refreshPreviewAvailability();
 }
 
 function showError(message) {
@@ -96,8 +153,8 @@ function formSnapshot() {
     main_goal: data.get("main_goal"), style: data.get("style"),
     allow_moving_large_furniture: data.has("allow_moving_large_furniture"),
     allow_purchases: data.has("allow_purchases"),
-    preserve_items: data.get("preserve_items") || "未指定",
-    additional_constraints: data.get("additional_constraints") || "未指定"
+    preserve_items: data.get("preserve_items") || null,
+    additional_constraints: data.get("additional_constraints") || null
   };
 }
 
@@ -222,6 +279,7 @@ function makeCompletionControl(rec) {
 }
 
 function renderResults(payload, snapshot) {
+  clearGeneratedPreview();
   const analysis = payload.analysis;
   const observationsById = Object.fromEntries(analysis.observations.map((observation) => [observation.observation_id, observation]));
   const orderedRecommendations = window.RoomStylerVisualPlan.orderRecommendations(analysis.recommendations);
@@ -293,6 +351,7 @@ function renderResults(payload, snapshot) {
   renderList("limitations", analysis.limitations, "未列出其他分析限制。");
   byId("result-context").textContent = `結果綁定：${snapshot.fileName}（${snapshot.fileSize} 位元組）｜目標 ${snapshot.constraints.main_goal}｜風格 ${snapshot.constraints.style}｜購買 ${snapshot.constraints.allow_purchases ? "允許" : "不允許"}｜移動大型家具 ${snapshot.constraints.allow_moving_large_furniture ? "允許" : "不允許"}`;
   byId("results").hidden = false;
+  refreshPreviewAvailability();
 }
 
 async function submitAnalysis() {
@@ -309,7 +368,13 @@ async function submitAnalysis() {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(apiError(payload, "分析失敗，請稍後重試。"));
     if (snapshot.selectionVersion !== selectionVersion) return;
-    resultSnapshot = snapshot; renderResults(payload, snapshot); outcome = "success";
+    resultSnapshot = {
+      ...snapshot,
+      analysis: payload.analysis,
+      submittedConstraints: payload.submitted_constraints,
+      binding: payload.analysis_binding
+    };
+    renderResults(payload, resultSnapshot); outcome = "success";
   } catch (error) { showError(error.message); }
   finally {
     activeRequest = false;
@@ -318,12 +383,77 @@ async function submitAnalysis() {
 }
 
 form.addEventListener("submit", (event) => { event.preventDefault(); submitAnalysis(); });
+form.addEventListener("input", () => {
+  if (resultSnapshot && !previewContextIsCurrent()) clearGeneratedPreview();
+  else refreshPreviewAvailability();
+});
 byId("retry-button").addEventListener("click", submitAnalysis);
+
+async function submitOrganizedPreview() {
+  if (activePreviewController || !imageProviderConfigured || !previewContextIsCurrent()) {
+    refreshPreviewAvailability();
+    return;
+  }
+  const requestVersion = ++previewRequestVersion;
+  const snapshot = {
+    selectionVersion,
+    binding: resultSnapshot.binding,
+    analysis: resultSnapshot.analysis,
+    constraints: resultSnapshot.submittedConstraints,
+    file: validatedFile
+  };
+  const controller = new AbortController();
+  activePreviewController = controller;
+  byId("organized-preview-error").hidden = true;
+  byId("organized-preview-result").hidden = true;
+  refreshPreviewAvailability();
+  const body = new FormData();
+  body.append("image", snapshot.file, snapshot.file.name);
+  body.append("analysis_json", JSON.stringify(snapshot.analysis));
+  body.append("constraints_json", JSON.stringify(snapshot.constraints));
+  body.append("analysis_binding", snapshot.binding);
+  try {
+    const response = await fetch("/api/v1/organized-preview", {
+      method: "POST", body, signal: controller.signal
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(apiError(payload, "無法產生 AI 整理預覽。"));
+    if (
+      requestVersion !== previewRequestVersion ||
+      snapshot.selectionVersion !== selectionVersion ||
+      snapshot.binding !== resultSnapshot?.binding ||
+      payload.analysis_binding !== snapshot.binding
+    ) return;
+    byId("organized-preview-image").src = payload.preview_data_url;
+    byId("organized-preview-result").hidden = false;
+    byId("organized-preview-status").textContent = "AI 整理預覽已產生；請對照原照片人工確認。";
+  } catch (error) {
+    if (error.name !== "AbortError" && requestVersion === previewRequestVersion) {
+      byId("organized-preview-error").textContent = error.message;
+      byId("organized-preview-error").hidden = false;
+      byId("organized-preview-status").textContent = "AI 整理預覽產生失敗。";
+    }
+  } finally {
+    if (requestVersion === previewRequestVersion) {
+      activePreviewController = null;
+      refreshPreviewAvailability();
+    }
+  }
+}
+
+byId("generate-preview-button").addEventListener("click", submitOrganizedPreview);
 
 fetch("/health").then((r) => r.json()).then((health) => {
   const status = byId("provider-status");
   status.textContent = health.provider.configured ? `NVIDIA 金鑰已設定 · ${health.provider.model}（連線未驗證）` : "NVIDIA 金鑰尚未設定";
   status.classList.add(health.provider.configured ? "ok" : "warn");
+  const imageStatus = byId("image-provider-status");
+  imageProviderConfigured = Boolean(health.image_provider?.configured);
+  imageStatus.textContent = imageProviderConfigured
+    ? `${health.image_provider.model} 已設定（尚未實際測試）`
+    : "需要 OPENAI_API_KEY";
+  imageStatus.classList.add(imageProviderConfigured ? "ok" : "warn");
+  refreshPreviewAvailability();
 }).catch(() => { byId("provider-status").textContent = "無法取得服務狀態"; });
 
 window.RoomStylerHelpers = {bboxToPercent, textElement, clearResults};

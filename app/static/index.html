@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/styles.css">
   <link rel="stylesheet" href="/static/processing_state.css">
   <link rel="stylesheet" href="/static/phase1b.css">
+  <link rel="stylesheet" href="/static/phase2a.css">
 </head>
 <body>
   <header class="topbar">
@@ -52,6 +53,22 @@
         <div class="two-column"><section><h3>不確定事項</h3><ul id="uncertainties"></ul></section><section><h3>分析限制</h3><ul id="limitations"></ul></section></div>
         <div id="result-context" class="snapshot"></div>
       </div>
+      <section id="organized-preview-panel" class="organized-preview-panel" aria-labelledby="organized-preview-heading">
+        <div class="section-heading preview-heading">
+          <div><span class="eyebrow">PHASE 2A</span><h3 id="organized-preview-heading">AI 整理預覽</h3></div>
+          <span id="image-provider-status" class="status-pill warn">正在檢查 OpenAI 設定…</span>
+        </div>
+        <p class="preview-warning" role="note">⚠ 此功能尚未實際測試</p>
+        <p class="preview-disclaimer">AI 整理預覽為生成式模擬結果，不代表實際整理後一定會呈現相同效果。</p>
+        <p class="hint">此功能僅能在本次 Phase 1B 分析成功後使用。按下按鈕才會把目前房間照片、已核准建議與限制傳送至 OpenAI Image API，可能產生費用。</p>
+        <button id="generate-preview-button" type="button" disabled>產生 AI 整理預覽</button>
+        <div id="organized-preview-status" class="hint" role="status" aria-live="polite">請先完成房間分析。</div>
+        <div id="organized-preview-error" class="error" role="alert" hidden></div>
+        <figure id="organized-preview-result" hidden>
+          <figcaption>AI 整理預覽</figcaption>
+          <img id="organized-preview-image" alt="AI 整理預覽生成式模擬結果">
+        </figure>
+      </section>
     </section>
   </main>
   <script src="/static/processing_state.js" defer></script>

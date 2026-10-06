@@ -1,0 +1,48 @@
+.organized-preview-panel {
+  margin-top: 30px;
+  padding: 20px;
+  border: 2px solid #d89a3b;
+  border-radius: 16px;
+  background: #fffaf0;
+}
+
+.preview-heading {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+  align-items: center;
+}
+
+.preview-warning {
+  margin-bottom: 8px;
+  color: #8a3c12;
+  font-size: 18px;
+  font-weight: 850;
+}
+
+.preview-disclaimer {
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+#generate-preview-button {
+  max-width: 320px;
+}
+
+#organized-preview-result {
+  margin: 20px 0 0;
+}
+
+#organized-preview-result figcaption {
+  margin-bottom: 8px;
+  color: var(--green);
+  font-weight: 850;
+}
+
+#organized-preview-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  background: #1d211e;
+}

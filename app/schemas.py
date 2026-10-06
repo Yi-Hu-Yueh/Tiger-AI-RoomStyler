@@ -118,6 +118,14 @@ class AnalyzeResponse(StrictModel):
     preview_data_url: str
     submitted_constraints: AnalyzeConstraints
     provider_model: str
+    analysis_binding: str
+
+
+class OrganizedPreviewResponse(StrictModel):
+    label: str
+    preview_data_url: str
+    provider_model: str
+    analysis_binding: str
 
 
 class ErrorDetail(StrictModel):

@@ -14,7 +14,7 @@ from app.routers.analysis import router as analysis_router
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
-app = FastAPI(title="Tiger AI Room Styler", version="1A")
+app = FastAPI(title="Tiger AI Room Styler", version="2A")
 app.include_router(analysis_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -45,6 +45,12 @@ async def health() -> dict[str, object]:
             "configured": bool(settings.nvidia_api_key),
             "model": settings.vision_model,
             "message": "NVIDIA API 金鑰已設定（尚未驗證連線）。" if settings.nvidia_api_key else "尚未設定 NVIDIA_API_KEY。",
+        },
+        "image_provider": {
+            "name": "OpenAI Image API",
+            "configured": bool(settings.openai_api_key),
+            "model": settings.image_model,
+            "message": "OpenAI API 金鑰已設定（功能尚未實際測試）。" if settings.openai_api_key else "尚未設定 OPENAI_API_KEY。",
         },
     }
 

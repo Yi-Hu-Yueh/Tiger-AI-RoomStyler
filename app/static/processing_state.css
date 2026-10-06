@@ -1,0 +1,13 @@
+.processing[hidden],
+.spinner[hidden] {
+  display: none;
+}
+
+.processing[data-state="error"] {
+  color: var(--red);
+}
+
+.processing[data-state="success"] {
+  color: var(--green);
+  font-weight: 700;
+}

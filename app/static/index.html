@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tiger AI 房間整理建議</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/processing_state.css">
+  <link rel="stylesheet" href="/static/phase1b.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><span class="eyebrow">PHASE 1B</span><h1>Tiger AI 房間整理建議</h1></div>
+    <div id="provider-status" class="status-pill">正在檢查服務…</div>
+  </header>
+  <main class="layout">
+    <section class="panel controls-panel">
+      <h2>照片與限制</h2>
+      <form id="analysis-form" novalidate>
+        <label class="upload-zone" for="room-image">
+          <span class="upload-title">選擇一張室內房間照片</span>
+          <span>JPEG、PNG 或 WebP，最多 10 MiB</span>
+          <input id="room-image" name="image" type="file" accept="image/jpeg,image/png,image/webp" required>
+        </label>
+        <div id="preview-message" class="hint">照片會先在本機伺服器校正；勾選同意並送出後，實際圖片會傳給 NVIDIA 雲端服務，使用 Z.ai GLM-5.3-Flash 分析。</div>
+        <div class="field-grid">
+          <label>主要目標<select name="main_goal"><option value="organization">改善整理</option><option value="aesthetics">改善視覺感受</option><option value="both" selected>兩者兼顧</option></select></label>
+          <label>風格偏好<select name="style"><option value="simple_and_clean">簡潔清爽</option><option value="warm_and_natural">溫暖自然</option><option value="preserve_current_style" selected>保留目前風格</option></select></label>
+        </div>
+        <label class="toggle"><input name="allow_moving_large_furniture" type="checkbox"><span>允許移動大型家具</span></label>
+        <label class="toggle"><input name="allow_purchases" type="checkbox"><span>允許購買新物品</span></label>
+        <label>必須保留的物品或家具<textarea name="preserve_items" maxlength="1000" placeholder="例如：書桌、祖傳木櫃"></textarea></label>
+        <label>其他實際限制<textarea name="additional_constraints" maxlength="1500" placeholder="例如：走道要保持暢通"></textarea></label>
+        <div class="structural-note">固定限制：保留現有牆壁、門、窗與房間結構。</div>
+        <label class="consent"><input name="consent" type="checkbox" required><span>我明確同意將所選房間照片及填寫的限制傳送至 NVIDIA 雲端 NIM 服務進行 AI 分析。我了解 API 可能產生費用，且適用 NVIDIA 的服務條款與資料處理政策。</span></label>
+        <button id="analyze-button" type="submit" disabled>分析照片</button>
+        <div id="processing-status" class="processing" data-state="idle" role="status" aria-live="polite" hidden><span id="processing-spinner" class="spinner" hidden></span><span id="processing-text"></span></div>
+        <div id="error-box" class="error" role="alert" hidden></div>
+      </form>
+    </section>
+    <section class="panel workspace-panel">
+      <div id="empty-state" class="empty-state"><div class="empty-icon">⌗</div><h2>先選擇房間照片</h2><p>系統會先在本機伺服器驗證、校正方向並顯示實際分析版本。</p></div>
+      <div id="preview-area" hidden>
+        <div class="image-stage"><img id="room-preview" alt="已校正的房間照片預覽"><svg id="action-arrows" class="action-arrows" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg><div id="overlay-layer"></div><div id="action-marker-layer"></div></div>
+        <div id="image-meta" class="hint"></div>
+      </div>
+      <div id="results" hidden>
+        <div class="result-heading"><div><span class="eyebrow">照片實證分析</span><h2 id="room-summary"></h2></div><button id="retry-button" class="secondary" type="button">使用相同設定重試</button></div>
+        <section id="visual-action-plan"><div class="section-heading"><div><span class="eyebrow">VISUAL ACTION PLAN</span><h3>視覺行動計畫</h3></div><strong id="action-progress" aria-live="polite">0 / 0 已完成</strong></div><ol id="action-checklist" class="action-checklist"></ol></section>
+        <section><h3>優先建議</h3><div id="recommendations" class="card-list"></div></section>
+        <section><h3>照片觀察證據</h3><div id="observations" class="card-list evidence-grid"></div></section>
+        <div class="two-column"><section><h3>不確定事項</h3><ul id="uncertainties"></ul></section><section><h3>分析限制</h3><ul id="limitations"></ul></section></div>
+        <div id="result-context" class="snapshot"></div>
+      </div>
+    </section>
+  </main>
+  <script src="/static/processing_state.js" defer></script>
+  <script src="/static/visual_plan.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

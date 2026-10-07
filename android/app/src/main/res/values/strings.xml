@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="photo_picker_action">從相簿選擇</string>
+    <string name="camera_capture_action">直接拍照</string>
+</resources>

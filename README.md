@@ -1,70 +1,251 @@
-# Tiger AI Room Styler — Phase 1B + Phase 2A
+# Tiger-AI-RoomStyler
 
-這是一個本機 FastAPI 網頁工具：驗證並校正一張室內照片，在取得明確同意後把實際處理過的圖片位元傳給 NVIDIA 雲端 NIM 的 Z.ai GLM-5.3-Flash，再以繁體中文顯示具照片證據的整理與美學建議。Phase 1B 會在原始照片上標示有證據的行動來源，且僅在目的地也有照片觀察與邊界框時繪製箭頭；同時提供依優先度排序的本機行動清單與完成狀態。
+AI 房間整理與風格建議系統。使用者可上傳或拍攝房間照片，設定「是否允許購買」、「是否允許移動大型家具」、「必須保留的物品」等限制，由雲端多模態模型產生以照片證據為基礎的整理建議，並以證據框、視覺行動計畫與完成狀態協助執行。
 
-Phase 1B 狀態：**PASS**。Live NVIDIA API 與屋主真實照片人工驗證均已通過；完整自動測試為 **94 passed**。測試期間發現的程序環境金鑰覆蓋 HTTP 403，以及 NVIDIA 回應讀取上限不足所致 HTTP 504，皆已解決。
+> **重要：本專案目前沒有執行任何本機 AI 模型。** Web 與 Android 的 AI 推論皆透過雲端 API 完成。
 
-Phase 2A 狀態：**IMPLEMENTED_NOT_LIVE_TESTED**。成功的 Phase 1B 分析完成後，可選擇將同一張處理後照片、該次核准建議及限制送至 OpenAI Image API 的 `gpt-image-2.5-sunburst` 圖片編輯端點，產生單一「AI 整理預覽」。目前只完成程式與模擬測試（現有完整測試套件 **108 passed**），未呼叫 OpenAI、未花費額度，也不宣稱真實生成效果可用。預覽是生成式模擬，不代表實際整理結果。
+## 目前狀態
 
-## Phase 2A AI 整理預覽
+| 模組 | 狀態 | 說明 |
+|---|---|---|
+| Web Phase 1A：房間照片分析 | **PASS** | 真實 NVIDIA GLM-5.3-Flash 分析、照片觀察、證據框與人工驗證通過 |
+| Web Phase 1B：Visual Action Plan | **PASS** | 來源框、目的地箭頭、行動清單與完成狀態已完成並人工驗證 |
+| Web Phase 2A：AI 整理預覽 | **IMPLEMENTED_NOT_LIVE_TESTED** | 功能已實作，但未執行 OpenAI 付費圖片編輯；UI 顯示「⚠ 此功能尚未實際測試」 |
+| Android APK | **APK_READY_FOR_OWNER_RETEST** | APK 可建置、相機與相簿入口可用；NVIDIA 回應格式韌性已修正，等待最新版本實機複驗 |
 
-- 僅在 Phase 1B 分析成功且設定 `OPENAI_API_KEY` 後開放按鈕；缺少金鑰不影響應用程式啟動或 Phase 1A/1B 分析。
-- 每次請求以雜湊綁定目前處理後照片、完整分析與限制；照片或限制改變後必須重新分析，舊預覽回應不會套到新照片。
-- 編輯提示要求保持同一房間、視角、固定結構、目前風格與不確定物品；禁止移動大型家具時保持其位置，禁止購買時不得加入新家具、收納用品、裝飾或其他新物品。
-- 每次操作只送一個圖片編輯請求，不重試、不產生多個版本、不切換供應商。網頁會直接顯示「⚠ 此功能尚未實際測試」及生成式結果免責說明。
+已知重要提交：
 
-## Visual Action Plan
+- Phase 1B：`e27be005b1387011583e548f677d4ebdfdfa8892`
+- Phase 2A：`6711ea7b54ecfac805b5f84360928e1aba32917f`
 
-- 每項建議會連結到編號行動、建議卡及照片上的來源標記。
-- 目的地必須引用本次回應中具有邊界框的照片觀察；無法驗證時不畫箭頭，改以文字列出屋主須確認的事項。
-- 行動清單依高、中、低優先度排序，可在「未處理／已完成／暫不處理」之間切換並顯示完成進度；狀態只存在目前頁面記憶體，不使用帳號或資料庫。
-- 禁止購買時，不得要求取得新材料；提及束帶、固定夾、收納盒等用品時，必須明確限定使用者已擁有，並提供完全不使用該材料的替代方案。
+## 核心功能
 
-## 已驗證環境與啟動
+- 單張 JPEG / PNG / WebP 房間照片輸入
+- Web 上傳、Android Photo Picker 與「直接拍照」
+- EXIF 方向校正、影像限制檢查、等比例縮放
+- 主目標：整理 / 美觀 / 兩者兼顧
+- 風格：簡潔乾淨 / 溫暖自然 / 保留目前風格
+- 是否允許購買新物品
+- 是否允許移動大型家具
+- 必須保留的物品或家具
+- 其他實際限制
+- NVIDIA NIM `z-ai/glm-5.3-flash` 房間照片分析
+- 嚴格 Schema + 語意驗證
+- 照片觀察證據與近似 Bounding Boxes
+- 優先建議與 Visual Action Plan
+- `未處理 / 已完成 / 暫不處理` 狀態與進度
+- OpenAI Image Edit「AI 整理預覽」功能骨架（尚未 live test）
+- Android 模型下拉選單與 API_KEY 輸入欄位
 
-- 專案：`D:\0TIGER\6months\PythonAPIDevelopment\Tiger-AI-RoomStyler`
-- Python：`D:\0TIGER\6months\PythonAPIDevelopment\venv_multi_query\Scripts\python.exe`
-- 預設網址：<http://127.0.0.1:18083>
+## 系統架構
 
-沒有 `.env` 時才複製 `.env.example` 為 `.env`。Phase 1A/1B 分析需要 `NVIDIA_API_KEY` 與 `ROOMSTYLER_VISION_MODEL=z-ai/glm-5.3-flash`；Phase 2A 預覽另需 `OPENAI_API_KEY` 與 `ROOMSTYLER_IMAGE_MODEL=gpt-image-2.5-sunburst`。作業系統環境變數優先於 `.env`。金鑰只存伺服器，請勿放入前端程式。未設定 OpenAI 金鑰仍能啟動並使用已設定的 Phase 1A/1B 功能。
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
+```text
+                           ┌────────────────────────────┐
+                           │        Cloud AI APIs       │
+                           │                            │
+                           │ NVIDIA NIM                 │
+                           │ z-ai/glm-5.3-flash         │
+                           │        │                   │
+                           │        └─ 房間照片分析     │
+                           │                            │
+                           │ OpenAI Image API           │
+                           │ gpt-image-2.5-sunburst     │
+                           │        └─ AI 整理預覽      │
+                           └────────────▲───────────────┘
+                                        │ HTTPS
+                  ┌─────────────────────┴─────────────────────┐
+                  │                                           │
+        ┌─────────┴──────────┐                     ┌──────────┴──────────┐
+        │ Web Application    │                     │ Android Application  │
+        │ FastAPI + JS/CSS   │                     │ Kotlin + Compose      │
+        │                    │                     │                       │
+        │ Browser            │                     │ Photo Picker / Camera │
+        │   ↓                │                     │   ↓                   │
+        │ Image Service      │                     │ Image Pipeline        │
+        │   ↓                │                     │   ↓                   │
+        │ Analysis Service   │                     │ NVIDIA Client         │
+        │   ↓                │                     │   ↓                   │
+        │ Validation         │                     │ Validation            │
+        │   ↓                │                     │   ↓                   │
+        │ Visual Action Plan │                     │ Visual Action Plan    │
+        └────────────────────┘                     └───────────────────────┘
 ```
 
-此為單次程序範圍，不會修改系統執行原則。也可直接啟動：
+## AI Provider
 
-```powershell
-D:\0TIGER\6months\PythonAPIDevelopment\venv_multi_query\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 18083
+### NVIDIA NIM — 房間分析
+
+- 模型：`z-ai/glm-5.3-flash`
+- Endpoint：`https://integrate.api.nvidia.com/v1/chat/completions`
+- 用途：多模態房間理解、照片觀察、整理建議、Bounding Boxes、Visual Action Plan
+- 推理設定：`reasoning_effort="low"`
+- Chat template：`clear_thinking=true`
+- Android 目前 timeout：connect 10s / write 30s / read 300s / total 360s
+- 不使用自動重試
+
+### OpenAI Image API — AI 整理預覽
+
+- 設定模型：`gpt-image-2.5-sunburst`
+- 用途：根據原始房間照片 + 已核准 Phase 1B 建議產生「AI 整理預覽」
+- 狀態：**已實作但未 live test**
+- Web / Android 皆必須明確顯示：`⚠ 此功能尚未實際測試`
+- 開發期間 OpenAI 遠端請求：`0`
+- 開發期間 OpenAI API 成本：`$0`
+
+## 圖片處理規則
+
+Web Phase 1A 原始規則：
+
+- 最大上傳：10 MiB
+- 最大解碼像素：25,000,000 pixels
+- Provider 圖片長邊：最大 2048 px
+- EXIF Orientation 校正
+- 保留長寬比
+- Provider 圖片移除 metadata
+- 不預設永久保存房間照片
+
+Android 使用相同方向校正、驗證與縮放概念；相機拍攝使用 App 私有快取，不主動存入手機相簿。
+
+## 回應契約與安全驗證
+
+模型回應包含：
+
+- `input_suitability`
+- `room_summary`
+- `observations[]`
+- `recommendations[]`
+- `uncertainties[]`
+- `limitations[]`
+
+主要驗證：
+
+- Observation / Recommendation ID 不可重複
+- 建議引用的 Observation 必須存在
+- Bounding box 必須符合標準化座標規則
+- 最多 5 個主要建議
+- 禁止購買時，不得要求新購物品或材料
+- 禁止移動大型家具時，不得要求大型家具搬動
+- 目的地不可憑空捏造
+- 房間牆面、門、窗與固定結構不得更動
+- 無尺寸證據時不得宣稱物品「一定放得下」
+- `limitations` / `uncertainties` 缺席或 `null` 時可正規化為空陣列；核心語意欄位仍嚴格必填
+
+## Web 啟動
+
+專案路徑：
+
+```text
+D:\0TIGER\6months\PythonAPIDevelopment\Tiger-AI-RoomStyler
 ```
 
-若 18083 已被其他程式占用，不要終止來源不明的程序；可在目前 PowerShell 工作階段設定 `$env:ROOMSTYLER_PORT='18084'` 後執行啟動腳本，並改開啟 <http://127.0.0.1:18084>。
+Python：
 
-## 設定
-
-`NVIDIA_API_KEY`（分析時必要）、`ROOMSTYLER_VISION_MODEL`（預設 `z-ai/glm-5.3-flash`）、`OPENAI_API_KEY`（只在產生預覽時必要）、`ROOMSTYLER_IMAGE_MODEL`（預設 `gpt-image-2.5-sunburst`）、`ROOMSTYLER_HOST`、`ROOMSTYLER_PORT`、`ROOMSTYLER_PROVIDER_TIMEOUT_SECONDS`、`ROOMSTYLER_PROVIDER_MAX_OUTPUT_TOKENS`，以及三個圖片限制變數都列在 `.env.example`。
-
-照片及使用者限制會傳送至 NVIDIA 雲端服務，可能產生 API 費用，並適用 NVIDIA 服務條款與資料處理政策；不保證零留存。`/health` 只檢查設定有無，不發送付費請求，也不證明金鑰或模型權限有效。
-
-## NVIDIA API 契約（2026-10-06 核對）
-
-- [Hosted 模型與範例](https://build.nvidia.com/z-ai/glm-5-3-flash)：模型 ID `z-ai/glm-5.3-flash`；端點 `POST https://integrate.api.nvidia.com/v1/chat/completions`。
-- [模型 API 參考](https://docs.api.nvidia.com/nim/reference/z-ai-glm-5-3-flash-infer)：認證為 `Authorization: Bearer <NVIDIA_API_KEY>`；使用 `messages`、`max_tokens`、`stream=false`，讀取 `choices[0].message.content` 與 `finish_reason`。
-- [GLM 圖片範例](https://docs.nvidia.com/nim/vision-language-models/latest/get-started/advanced/get-started-glm-5-3-flash.html) 使用 `content` 陣列與 `image_url.url`；[NVIDIA 多模態資料文件](https://docs.nvidia.com/nemo-helix/v0.7.0/documentation/guardrail-models/tutorials/multimodal-data/) 記載 `data:image/jpeg;base64,...`。本程式在同一請求中傳送處理後的 JPEG 位元，沒有檔案上傳 API、重試或備援路徑。
-- 文件落差：GLM hosted 參考的訊息 schema 仍只列字串，模型卡與模型專用 NIM 指南則明確支援圖片；本專案已以屋主核准的真實照片驗證 Base64 圖片在 hosted GLM-5.3-Flash 可用，但仍以實際服務行為與錯誤回應為準。
-- hosted 參考未列 `response_format`／強制 JSON Schema 支援，因此不假設支援、不送猜測欄位。提示只附精簡輸出契約，收到後仍執行完整 Pydantic 與既有語意驗證；格式錯誤直接回報，不做第二次修復請求。
-- [模型限制](https://docs.api.nvidia.com/nim/reference/z-ai-glm-5-3-flash)：上下文最多 1,048,576 tokens、最多 8 張圖片；本程式只允許一張。官方 hosted 參考只列 `max_tokens >= 1`；未找到此模型明確的單張位元組上限、RPM 或最大輸出 token 值，不把其他模型的限制套用為已確認值。413、429 或截斷回應會清楚報錯。
-
-支援 JPEG、PNG、WebP；上傳上限 10 MiB、解碼上限 25,000,000 像素、供應商圖片最長邊 2048 像素。系統拒絕損毀、動態或偽裝格式的圖片。
-
-## 測試
-
-```powershell
-D:\0TIGER\6months\PythonAPIDevelopment\venv_multi_query\Scripts\python.exe -m pytest -q
+```text
+D:\0TIGER\6months\PythonAPIDevelopment\venv_multi_query\Scripts\python.exe
 ```
 
-自動測試使用模擬 NVIDIA 回應；hosted API 相容性與真實照片理解另由已通過的屋主人工驗證確認。完整人工驗證紀錄見 `docs/MANUAL_TEST.md`。共用 Python 3.11.3 與現有套件，未新增或升降級相依套件。
+啟動範例：
+
+```powershell
+Set-Location 'D:\0TIGER\6months\PythonAPIDevelopment\Tiger-AI-RoomStyler'
+& 'D:\0TIGER\6months\PythonAPIDevelopment\venv_multi_query\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 18089
+```
+
+實際 Port 可依環境調整；不要終止無關程序來搶 Port。
+
+## Web 環境變數
+
+```env
+NVIDIA_API_KEY=...
+ROOMSTYLER_VISION_MODEL=z-ai/glm-5.3-flash
+
+# AI 整理預覽（可選；尚未 live test）
+OPENAI_API_KEY=...
+ROOMSTYLER_IMAGE_MODEL=gpt-image-2.5-sunburst
+```
+
+作業系統環境變數優先於專案 `.env`。若 shell 內存在舊的 `NVIDIA_API_KEY`，可能覆蓋專案 `.env` 中有效的 Key。
+
+## Android
+
+Android 專案位於：
+
+```text
+android/
+```
+
+技術：
+
+- Kotlin
+- Jetpack Compose
+- Android Photo Picker
+- `ActivityResultContracts.TakePicture`
+- `FileProvider`
+- App 私有快取
+- 直接 HTTPS 呼叫雲端 AI API
+
+Android App 不依賴 Windows FastAPI Server，也沒有嵌入 Python。
+
+### Android API Key
+
+- 使用者在 App 內輸入
+- 遮罩顯示
+- 切換模型時清除
+- 僅保存在記憶體
+- 不寫入 APK、resources、Gradle 或 BuildConfig
+
+### 最新 Android 驗證狀態
+
+最新版本：`0.1.6-optional-lists`（`versionCode=7`）
+
+- Camera：已能顯示「直接拍照」並回傳預覽
+- Photo Picker：可用
+- NVIDIA 連線：已成功取得模型回應
+- 目前最新修正：`limitations` / `uncertainties` 缺失時正規化為 `[]`
+- 最新 APK 等待屋主實機重測，因此 **Android NVIDIA Analysis 尚未正式標 PASS**
+
+> 若後續已完成新版實機驗證，請同步更新本 README 的 Android 狀態。
+
+## Android APK
+
+預設輸出：
+
+```text
+D:\0TIGER\6months\PythonAPIDevelopment\Tiger-AI-RoomStyler\dist\Tiger-AI-RoomStyler-debug.apk
+```
+
+Package：
+
+```text
+com.tigerai.roomstyler
+```
+
+## 隱私與安全
+
+- 本專案沒有本機 AI 推論模型
+- NVIDIA / OpenAI 分析會將圖片送至對應雲端服務
+- API Key 不應寫入 Git 或 APK
+- 不記錄 Authorization header、API Key、圖片 base64 或完整私人模型回應
+- Room photo 不預設永久保存
+- Android 相機照片使用私有快取並清理暫存檔
+- AI 整理預覽必須標示為生成式模擬，不得描述成確定的實際整理成果
 
 ## 已知限制
 
-邊界框是模型提供的近似證據標註，不是精確物件偵測；單張照片無法證明尺寸、承重、隱藏空間或動線全貌。模型可能誤判可見物件，所有建議都必須由屋主對照照片與現場確認。先前的截斷問題已透過將輸出預算由 4096 調高為 16384 並精簡輸出契約解決；程式仍拒絕不完整回應、不自動重送，且只記錄 finish reason、字元數等去識別化診斷資料。Phase 1A 與 Phase 1B 的真實 NVIDIA 分析及屋主人工驗證均已通過。線材整理措辭仍可能在禁止購買時隱含假設現場已有固定材料，屬非阻斷限制，執行前應由屋主確認。完成狀態僅存於目前頁面，重新載入後不保留。
+1. 單張照片無法證明房間尺寸、承重、隱藏空間與完整動線。
+2. Bounding boxes 為模型提供的近似視覺證據，不是精密物件偵測標註。
+3. NVIDIA 雲端推論延遲可能受模型排隊、網路與推理時間影響。
+4. Android 最新 NVIDIA Schema 修正仍待屋主最新版本實機複驗。
+5. OpenAI AI 整理預覽功能尚未真實呼叫，模型相容性、生成品質與保留房間幾何能力未驗證。
+6. Visual Action Plan 的完成狀態目前主要為本機 UI 狀態，未設計帳號或跨裝置同步。
+
+## 專案原則
+
+> **專案成功是唯一標準。**
+
+- 只修真正阻礙成功的問題
+- 不做無關重構
+- 不因測試通過就宣稱未驗證功能已成功
+- 不以 mock 測試取代真實視覺驗證
+- 未實測功能必須在 UI 與文件中明確標記
+- 不必要的付費 API 呼叫不執行

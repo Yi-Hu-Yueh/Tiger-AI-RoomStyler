@@ -83,7 +83,8 @@ class NvidiaNimVisionProvider:
         # Request JSON in the prompt, then enforce the schema in Python.
         instructions = (
             PROMPT_PATH.read_text(encoding="utf-8")
-            + "\n只輸出一個 JSON 物件，不加 Markdown、前言或後記；不得省略必填欄位。\n輸出契約：\n"
+            + '\n只輸出一個 JSON 物件，不加 Markdown、前言或後記；不得省略必填欄位。\n'
+            + '若無事項，仍須輸出 "uncertainties":[]、"limitations":[]，不得省略或為 null。\n輸出契約：\n'
             + _compact_output_contract()
         )
         return {
@@ -100,6 +101,10 @@ class NvidiaNimVisionProvider:
             ],
             "max_tokens": self.max_output_tokens,
             "stream": False,
+            # NVIDIA GLM-5.3-Flash: low/high/max; clear_thinking is a chat-template option.
+            # https://build.nvidia.com/z-ai/glm-5-3-flash/modelcard
+            "reasoning_effort": "low",
+            "chat_template_kwargs": {"clear_thinking": True},
         }
 
     async def analyze(self, image_bytes: bytes, mime_type: str, constraints: AnalyzeConstraints) -> str:

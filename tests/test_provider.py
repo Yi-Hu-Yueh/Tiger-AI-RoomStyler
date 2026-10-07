@@ -36,6 +36,9 @@ def test_actual_image_bytes_headers_model_endpoint_and_one_request(valid_analysi
         assert payload["model"] == "z-ai/glm-5.3-flash"
         assert payload["stream"] is False
         assert payload["max_tokens"] == 16384
+        assert payload["reasoning_effort"] == "low"
+        assert payload["chat_template_kwargs"] == {"clear_thinking": True}
+        assert "clear_thinking" not in payload
         assert "response_format" not in payload
         parts = payload["messages"][1]["content"]
         images = [part for part in parts if part["type"] == "image_url"]

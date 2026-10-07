@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class StrictModel(BaseModel):
@@ -101,8 +101,14 @@ class RoomAnalysis(StrictModel):
     room_summary: Annotated[str, Field(min_length=1, max_length=1500)]
     observations: list[Observation]
     recommendations: Annotated[list[Recommendation], Field(max_length=5)]
-    uncertainties: list[Annotated[str, Field(min_length=1, max_length=800)]]
-    limitations: list[Annotated[str, Field(min_length=1, max_length=800)]]
+    uncertainties: list[Annotated[str, Field(min_length=1, max_length=800)]] = Field(default_factory=list)
+    limitations: list[Annotated[str, Field(min_length=1, max_length=800)]] = Field(default_factory=list)
+
+    @field_validator("uncertainties", "limitations", mode="before")
+    @classmethod
+    def normalize_optional_lists(cls, value):
+        # Only absent/null auxiliary lists default to []; malformed values still fail.
+        return [] if value is None else value
 
 
 class ImageMetadata(StrictModel):

@@ -100,6 +100,65 @@ def test_mocked_analysis_uses_exact_preview_bytes(monkeypatch, valid_analysis_di
     assert payload['provider_model'] == 'z-ai/glm-5.3-flash'
 
 
+@pytest.mark.parametrize("entered", [None, "", "   ", " owner-nvidia-test-key "])
+def test_request_key_precedence_is_scoped_and_never_returned(monkeypatch, valid_analysis_dict, caplog, entered):
+    settings = Settings(nvidia_api_key="server-nvidia-test-key")
+    app.dependency_overrides[get_settings] = lambda: settings
+    keys = []
+
+    async def mocked(self, *_):
+        keys.append(self.api_key)
+        return json.dumps(valid_analysis_dict)
+
+    monkeypatch.setattr(NvidiaNimVisionProvider, "analyze", mocked)
+    response = client.post(
+        "/api/v1/analyze", data=form(), files={"image": ("room.png", make_image(), "image/png")},
+        headers={} if entered is None else {"X-RoomStyler-API-Key": entered},
+    )
+    assert response.status_code == 200
+    assert keys == [(entered or "").strip() or settings.nvidia_api_key]
+    assert settings.nvidia_api_key == "server-nvidia-test-key"
+    second = client.post(
+        "/api/v1/analyze", data=form(), files={"image": ("room.png", make_image(), "image/png")},
+    )
+    assert second.status_code == 200
+    assert keys[-1] == "server-nvidia-test-key"
+    for secret in ("server-nvidia-test-key", "owner-nvidia-test-key"):
+        assert secret not in response.text + second.text + client.get("/health").text + caplog.text
+
+
+def test_entered_key_works_without_server_key(monkeypatch, valid_analysis_dict):
+    app.dependency_overrides[get_settings] = lambda: Settings(nvidia_api_key=None)
+
+    async def mocked(self, *_):
+        assert self.api_key == "owner-nvidia-test-key"
+        return json.dumps(valid_analysis_dict)
+
+    monkeypatch.setattr(NvidiaNimVisionProvider, "analyze", mocked)
+    response = client.post(
+        "/api/v1/analyze", data=form(), files={"image": ("room.png", make_image(), "image/png")},
+        headers={"X-RoomStyler-API-Key": "owner-nvidia-test-key"},
+    )
+    assert response.status_code == 200
+
+
+def test_rejected_user_key_does_not_retry_with_server_key(monkeypatch, caplog):
+    calls = []
+
+    async def rejected(self, *_):
+        calls.append(self.api_key)
+        raise ProviderError("authentication_failed", "NVIDIA API 金鑰驗證失敗。")
+
+    monkeypatch.setattr(NvidiaNimVisionProvider, "analyze", rejected)
+    response = client.post(
+        "/api/v1/analyze", data=form(), files={"image": ("room.png", make_image(), "image/png")},
+        headers={"X-RoomStyler-API-Key": "rejected-owner-test-key"},
+    )
+    assert response.status_code == 502
+    assert calls == ["rejected-owner-test-key"]
+    assert "rejected-owner-test-key" not in response.text + caplog.text
+
+
 @pytest.mark.parametrize('code', ['authentication_failed', 'rate_limited', 'provider_timeout', 'provider_network_error', 'blocked_response'])
 def test_failed_provider_never_returns_fake_advice(monkeypatch, code):
     async def fail(*args):

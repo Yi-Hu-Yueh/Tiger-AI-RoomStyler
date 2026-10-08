@@ -96,6 +96,50 @@ def test_preview_uses_bound_processed_image_recommendations_and_constraints(
     assert len(calls) == 1
 
 
+@pytest.mark.parametrize("entered", [None, "", "   ", " owner-openai-test-key "])
+def test_preview_request_key_precedence_and_isolation(monkeypatch, valid_analysis_dict, caplog, entered):
+    settings = Settings(openai_api_key="server-openai-test-key", nvidia_api_key="server-nvidia-test-key")
+    app.dependency_overrides[get_settings] = lambda: settings
+    original, _, _, _, _, data = preview_context(valid_analysis_dict)
+    keys = []
+
+    async def mocked(self, *_):
+        keys.append(self.api_key)
+        return make_image("PNG"), "image/png"
+
+    monkeypatch.setattr(OpenAIImageEditProvider, "edit", mocked)
+    response = client.post(
+        "/api/v1/organized-preview", data=data, files={"image": ("room.png", original, "image/png")},
+        headers={} if entered is None else {"X-RoomStyler-API-Key": entered},
+    )
+    assert response.status_code == 200
+    assert keys == [(entered or "").strip() or "server-openai-test-key"]
+    assert settings.openai_api_key == "server-openai-test-key"
+    assert settings.nvidia_api_key == "server-nvidia-test-key"
+    second = client.post(
+        "/api/v1/organized-preview", data=data, files={"image": ("room.png", original, "image/png")},
+    )
+    assert second.status_code == 200
+    assert keys[-1] == "server-openai-test-key"
+    for secret in ("owner-openai-test-key", "server-openai-test-key", "server-nvidia-test-key"):
+        assert secret not in response.text + second.text + client.get("/health").text + caplog.text
+
+
+def test_preview_entered_key_works_without_server_configuration(monkeypatch, valid_analysis_dict):
+    original, _, _, _, _, data = preview_context(valid_analysis_dict)
+
+    async def mocked(self, *_):
+        assert self.api_key == "owner-openai-test-key"
+        return make_image("PNG"), "image/png"
+
+    monkeypatch.setattr(OpenAIImageEditProvider, "edit", mocked)
+    response = client.post(
+        "/api/v1/organized-preview", data=data, files={"image": ("room.png", original, "image/png")},
+        headers={"X-RoomStyler-API-Key": "owner-openai-test-key"},
+    )
+    assert response.status_code == 200
+
+
 def test_changed_image_is_rejected_before_remote_edit(monkeypatch, valid_analysis_dict):
     app.dependency_overrides[get_settings] = lambda: Settings(openai_api_key="openai-test-secret")
     _, _, _, _, _, data = preview_context(valid_analysis_dict)

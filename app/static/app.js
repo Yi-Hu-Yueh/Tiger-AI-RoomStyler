@@ -5,6 +5,10 @@ const form = byId("analysis-form");
 const fileInput = byId("room-image");
 const analyzeButton = byId("analyze-button");
 const errorBox = byId("error-box");
+const modelSelect = byId("provider-model");
+const apiKeyInput = byId("api-key");
+const NVIDIA_MODEL = "z-ai/glm-5.3-flash";
+const OPENAI_MODEL = "gpt-image-2.5-sunburst";
 const processingElements = {
   container: byId("processing-status"),
   spinner: byId("processing-spinner"),
@@ -18,8 +22,55 @@ let activeRequest = false;
 let resultSnapshot = null;
 let actionCompletionState = null;
 let imageProviderConfigured = false;
+let analysisProviderConfigured = false;
 let activePreviewController = null;
 let previewRequestVersion = 0;
+
+function requestKeyHeaders() {
+  const key = apiKeyInput.value.trim();
+  if (!key) return {};
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
+  if (window.location.protocol !== "https:" && !local) {
+    throw new Error("為保護 API_KEY，請使用 HTTPS 網頁；本機 localhost 測試除外。");
+  }
+  return {"X-RoomStyler-API-Key": key};
+}
+
+function previewKeyAvailable() {
+  return modelSelect.value === OPENAI_MODEL && (Boolean(apiKeyInput.value.trim()) || imageProviderConfigured);
+}
+
+function refreshModelControls() {
+  const busy = activeRequest || Boolean(activePreviewController);
+  modelSelect.disabled = busy;
+  apiKeyInput.disabled = busy;
+  analyzeButton.disabled = busy || !validatedFile || modelSelect.value !== NVIDIA_MODEL;
+  byId("retry-button").disabled = analyzeButton.disabled;
+  const status = byId("provider-status");
+  const userKey = modelSelect.value === NVIDIA_MODEL && Boolean(apiKeyInput.value.trim());
+  status.textContent = userKey ? "NVIDIA 將使用本次輸入金鑰（連線未驗證）"
+    : (analysisProviderConfigured ? "NVIDIA 伺服器金鑰已設定（連線未驗證）" : "NVIDIA：可輸入 API_KEY，或設定伺服器金鑰");
+  status.classList.toggle("ok", userKey || analysisProviderConfigured);
+  status.classList.toggle("warn", !userKey && !analysisProviderConfigured);
+  const imageStatus = byId("image-provider-status");
+  const userImageKey = modelSelect.value === OPENAI_MODEL && Boolean(apiKeyInput.value.trim());
+  imageStatus.textContent = userImageKey ? "OpenAI 將使用本次輸入金鑰（尚未實際測試）"
+    : (imageProviderConfigured ? "OpenAI 伺服器金鑰已設定（尚未實際測試）" : "需要 OpenAI API_KEY");
+  imageStatus.classList.toggle("ok", userImageKey || imageProviderConfigured);
+  imageStatus.classList.toggle("warn", !userImageKey && !imageProviderConfigured);
+  refreshPreviewAvailability();
+}
+
+modelSelect.addEventListener("change", () => {
+  apiKeyInput.value = "";
+  clearGeneratedPreview();
+  errorBox.hidden = true;
+});
+apiKeyInput.addEventListener("input", refreshModelControls);
+window.addEventListener("pagehide", () => {
+  apiKeyInput.value = "";
+  refreshModelControls();
+});
 
 function textElement(tag, text, className = "") {
   const element = document.createElement(tag);
@@ -61,9 +112,14 @@ function previewContextIsCurrent() {
 
 function refreshPreviewAvailability() {
   const button = byId("generate-preview-button");
-  if (!imageProviderConfigured) {
+  if (modelSelect.value !== OPENAI_MODEL) {
     button.disabled = true;
-    byId("organized-preview-status").textContent = "尚未設定 OPENAI_API_KEY；房間分析仍可正常使用。";
+    byId("organized-preview-status").textContent = "產生預覽請選擇 OpenAI 模型；房間分析請選擇 NVIDIA 模型。";
+    return;
+  }
+  if (!previewKeyAvailable()) {
+    button.disabled = true;
+    byId("organized-preview-status").textContent = "請輸入 OpenAI API_KEY，或設定伺服器 OPENAI_API_KEY；房間分析仍可正常使用。";
     return;
   }
   if (!resultSnapshot) {
@@ -81,7 +137,7 @@ function refreshPreviewAvailability() {
     byId("organized-preview-status").textContent = "照片或限制已變更，請重新分析後再產生預覽。";
     return;
   }
-  button.disabled = Boolean(activePreviewController);
+  button.disabled = activeRequest || Boolean(activePreviewController);
   byId("organized-preview-status").textContent = activePreviewController
     ? "正在產生 AI 整理預覽…"
     : (byId("organized-preview-result").hidden
@@ -96,7 +152,7 @@ function clearGeneratedPreview() {
   byId("organized-preview-result").hidden = true;
   byId("organized-preview-image").removeAttribute("src");
   byId("organized-preview-error").hidden = true;
-  refreshPreviewAvailability();
+  refreshModelControls();
 }
 
 function showError(message) {
@@ -125,7 +181,7 @@ async function validatePreview(file, version) {
   byId("preview-area").hidden = false;
   byId("empty-state").hidden = true;
   byId("preview-message").textContent = "照片已驗證；此預覽與送往 NVIDIA 雲端服務的方向、裁切範圍及比例相同。";
-  analyzeButton.disabled = false;
+  refreshModelControls();
 }
 
 fileInput.addEventListener("change", async () => {
@@ -355,16 +411,17 @@ function renderResults(payload, snapshot) {
 }
 
 async function submitAnalysis() {
-  if (activeRequest || !validatedFile) return;
+  if (activeRequest || activePreviewController || !validatedFile || modelSelect.value !== NVIDIA_MODEL) return;
   if (!form.elements.consent.checked) { showError("請先閱讀並勾選雲端處理同意聲明。"); return; }
   activeRequest = true; errorBox.hidden = true;
   const timer = window.RoomStylerProcessing.begin(processingElements);
+  refreshModelControls();
   let outcome = "error";
   const snapshot = {fileName: validatedFile.name, fileSize: validatedFile.size, selectionVersion, constraints: formSnapshot()};
   const body = new FormData(form); body.set("image", validatedFile, validatedFile.name);
   for (const name of ["allow_moving_large_furniture", "allow_purchases", "consent"]) body.set(name, form.elements[name].checked ? "true" : "false");
   try {
-    const response = await fetch("/api/v1/analyze", {method:"POST", body});
+    const response = await fetch("/api/v1/analyze", {method:"POST", body, headers: requestKeyHeaders()});
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(apiError(payload, "分析失敗，請稍後重試。"));
     if (snapshot.selectionVersion !== selectionVersion) return;
@@ -379,18 +436,19 @@ async function submitAnalysis() {
   finally {
     activeRequest = false;
     window.RoomStylerProcessing.finish(processingElements, timer, outcome, Boolean(validatedFile));
+    refreshModelControls();
   }
 }
 
 form.addEventListener("submit", (event) => { event.preventDefault(); submitAnalysis(); });
 form.addEventListener("input", () => {
   if (resultSnapshot && !previewContextIsCurrent()) clearGeneratedPreview();
-  else refreshPreviewAvailability();
+  else refreshModelControls();
 });
 byId("retry-button").addEventListener("click", submitAnalysis);
 
 async function submitOrganizedPreview() {
-  if (activePreviewController || !imageProviderConfigured || !previewContextIsCurrent()) {
+  if (activeRequest || activePreviewController || !previewKeyAvailable() || !previewContextIsCurrent()) {
     refreshPreviewAvailability();
     return;
   }
@@ -406,7 +464,7 @@ async function submitOrganizedPreview() {
   activePreviewController = controller;
   byId("organized-preview-error").hidden = true;
   byId("organized-preview-result").hidden = true;
-  refreshPreviewAvailability();
+  refreshModelControls();
   const body = new FormData();
   body.append("image", snapshot.file, snapshot.file.name);
   body.append("analysis_json", JSON.stringify(snapshot.analysis));
@@ -414,7 +472,7 @@ async function submitOrganizedPreview() {
   body.append("analysis_binding", snapshot.binding);
   try {
     const response = await fetch("/api/v1/organized-preview", {
-      method: "POST", body, signal: controller.signal
+      method: "POST", body, signal: controller.signal, headers: requestKeyHeaders()
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(apiError(payload, "無法產生 AI 整理預覽。"));
@@ -436,7 +494,7 @@ async function submitOrganizedPreview() {
   } finally {
     if (requestVersion === previewRequestVersion) {
       activePreviewController = null;
-      refreshPreviewAvailability();
+      refreshModelControls();
     }
   }
 }
@@ -444,16 +502,11 @@ async function submitOrganizedPreview() {
 byId("generate-preview-button").addEventListener("click", submitOrganizedPreview);
 
 fetch("/health").then((r) => r.json()).then((health) => {
-  const status = byId("provider-status");
-  status.textContent = health.provider.configured ? `NVIDIA 金鑰已設定 · ${health.provider.model}（連線未驗證）` : "NVIDIA 金鑰尚未設定";
-  status.classList.add(health.provider.configured ? "ok" : "warn");
-  const imageStatus = byId("image-provider-status");
+  analysisProviderConfigured = Boolean(health.provider?.configured);
   imageProviderConfigured = Boolean(health.image_provider?.configured);
-  imageStatus.textContent = imageProviderConfigured
-    ? `${health.image_provider.model} 已設定（尚未實際測試）`
-    : "需要 OPENAI_API_KEY";
-  imageStatus.classList.add(imageProviderConfigured ? "ok" : "warn");
-  refreshPreviewAvailability();
+  refreshModelControls();
 }).catch(() => { byId("provider-status").textContent = "無法取得服務狀態"; });
+
+refreshModelControls();
 
 window.RoomStylerHelpers = {bboxToPercent, textElement, clearResults};

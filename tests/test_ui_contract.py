@@ -46,3 +46,27 @@ def test_preview_requires_current_bound_analysis_and_rejects_stale_ui_results() 
     assert 'payload.analysis_binding !== snapshot.binding' in SCRIPT
     assert 'snapshot.selectionVersion !== selectionVersion' in SCRIPT
     assert '/api/v1/organized-preview' in SCRIPT
+
+
+def test_model_and_key_ui_are_masked_and_not_serialized_in_forms():
+    from html.parser import HTMLParser
+
+    class Inputs(HTMLParser):
+        controls = {}
+
+        def handle_starttag(self, tag, attrs):
+            values = dict(attrs)
+            if values.get("id") in {"api-key", "provider-model"}:
+                self.controls[values["id"]] = values
+
+    parser = Inputs()
+    parser.feed(INDEX)
+    assert parser.controls["api-key"]["type"] == "password"
+    assert parser.controls["api-key"]["autocomplete"] == "off"
+    assert "name" not in parser.controls["api-key"]
+    assert "name" not in parser.controls["provider-model"]
+    assert "NVIDIA NIM — z-ai/glm-5.3-flash" in INDEX
+    assert "OpenAI — gpt-image-2.5-sunburst" in INDEX
+    assert "localStorage" not in SCRIPT and "sessionStorage" not in SCRIPT
+    assert "console." not in SCRIPT
+    assert 'headers: requestKeyHeaders()' in SCRIPT

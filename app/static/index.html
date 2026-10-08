@@ -17,7 +17,10 @@
   <main class="layout">
     <section class="panel controls-panel">
       <h2>照片與限制</h2>
-      <form id="analysis-form" novalidate>
+      <form id="analysis-form" novalidate autocomplete="off">
+        <label for="provider-model">選擇模型<select id="provider-model"><option value="z-ai/glm-5.3-flash">NVIDIA NIM — z-ai/glm-5.3-flash</option><option value="gpt-image-2.5-sunburst">OpenAI — gpt-image-2.5-sunburst</option></select></label>
+        <label for="api-key">API_KEY<input id="api-key" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="api-key-notice"></label>
+        <p id="api-key-notice" class="hint">API_KEY 僅暫存此頁記憶體，不會儲存；切換模型會清除。留白時使用伺服器對應金鑰。公開部署請使用 HTTPS。NVIDIA 用於房間分析；OpenAI 僅用於分析後的整理預覽。</p>
         <label class="upload-zone" for="room-image">
           <span class="upload-title">選擇一張室內房間照片</span>
           <span>JPEG、PNG 或 WebP，最多 10 MiB</span>

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import base64
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from pydantic import ValidationError
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from pydantic import SecretStr, ValidationError
 
 from app.config import Settings, get_settings
 from app.providers.nvidia_nim import NvidiaNimVisionProvider, ProviderError
@@ -25,6 +25,12 @@ router = APIRouter(prefix="/api/v1", tags=["analysis"])
 
 def _http_error(status: int, code: str, message: str) -> HTTPException:
     return HTTPException(status_code=status, detail={"code": code, "message": message})
+
+
+def _request_key(entered: SecretStr | None, server_key: str | None) -> str | None:
+    # Request-only header: never mutate settings/environment or include it in response/binding data.
+    value = entered.get_secret_value().strip() if entered is not None else ""
+    return value or server_key
 
 
 def _constraints(
@@ -91,6 +97,7 @@ async def analyze(
     preserve_items: str | None = Form(None),
     additional_constraints: str | None = Form(None),
     consent: bool = Form(False),
+    api_key: SecretStr | None = Header(None, alias="X-RoomStyler-API-Key"),
     settings: Settings = Depends(get_settings),
 ) -> AnalyzeResponse:
     constraints = _constraints(
@@ -104,7 +111,7 @@ async def analyze(
     )
     processed = await _image(image, settings)
     provider = NvidiaNimVisionProvider(
-        settings.nvidia_api_key,
+        _request_key(api_key, settings.nvidia_api_key),
         settings.vision_model,
         settings.provider_timeout_seconds,
         settings.provider_max_output_tokens,
@@ -136,6 +143,7 @@ async def organized_preview(
     analysis_json: str = Form(...),
     constraints_json: str = Form(...),
     analysis_binding: str = Form(...),
+    api_key: SecretStr | None = Header(None, alias="X-RoomStyler-API-Key"),
     settings: Settings = Depends(get_settings),
 ) -> OrganizedPreviewResponse:
     try:
@@ -152,7 +160,7 @@ async def organized_preview(
         raise _http_error(409, "stale_analysis", "照片、建議或限制已變更，請重新分析後再產生預覽。")
 
     provider = OpenAIImageEditProvider(
-        settings.openai_api_key,
+        _request_key(api_key, settings.openai_api_key),
         settings.image_model,
         settings.provider_timeout_seconds,
     )
